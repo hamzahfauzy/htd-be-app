@@ -119,7 +119,6 @@ class Auth
     public function can(string $permission): bool
     {
         $permissions = $this->permissions();
-        $permissions = array_column($permissions, 'slug');
 
         if (in_array('*', $permissions, true)) {
             return true;
@@ -193,11 +192,13 @@ class Auth
             OR ur.user_id IS NOT NULL
         ";
 
-        $this->permissions = Database::exec($sql, [
+        $permissions = Database::exec($sql, [
             $user->id,
             $user->id
         ])->fetchAll();
 
-        return array_column($this->permissions, 'slug');
+        $this->permissions = array_column($permissions, 'slug');
+
+        return $this->permissions;
     }
 }
