@@ -1,0 +1,12 @@
+/vendor
+/.env
+
+/app/*
+!/app
+
+/modules/*
+!/modules/auth
+!/modules/permissions
+!/modules/roles
+!/modules/users
+!/modules/dashboard.php
