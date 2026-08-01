@@ -97,6 +97,8 @@ class Auth
             hash('sha256', $token),
         ])->fetchObject();
 
+        $user->roles = DB::table('user_roles')->select('roles.id, roles.name')->where('user_id', $user->id)->leftJoin('roles','roles.id','=','user_roles.role_id')->get();
+
         unset($user->password);
 
         $user->permissions = $this->permissions($user);
