@@ -3,6 +3,7 @@
 
 /app/*
 !/app
+!/app/.gitkeep
 
 /modules/*
 !/modules/auth
