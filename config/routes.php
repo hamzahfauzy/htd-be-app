@@ -27,7 +27,7 @@ Route::get('/', function(){
 Route::post('/login', validate('modules/auth/validation/login'), 'modules/auth/actions/login');
 Route::post('/register', validate('modules/auth/validation/register'), 'modules/auth/actions/register');
 Route::get('/me', isAuthenticated(), 'modules/auth/actions/me');
-Route::put('/me', isAuthenticated(), 'modules/auth/actions/update-profile');
+Route::put('/me', isAuthenticated(), validate('modules/auth/validation/update-profile'), 'modules/auth/actions/update-profile');
 Route::get('/dashboard', isAuthenticated(), 'modules/dashboard');
 
 /**

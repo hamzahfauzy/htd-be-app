@@ -27,7 +27,19 @@ class Validator
 
             $value = $this->data[$field] ?? null;
 
+            // Jika nullable dan kosong, skip semua rule lain
+            if (
+                in_array('nullable', $rules, true) &&
+                ($value === null || $value === '')
+            ) {
+                continue;
+            }
+
             foreach ($rules as $rule) {
+
+                if ($rule === 'nullable') {
+                    continue;
+                }
 
                 if (is_callable($rule)) {
 
@@ -182,13 +194,20 @@ class Validator
 
             case 'unique':
 
-                [$table, $column] = explode(',', $parameter);
+                [$table, $column, $ignoreId] = array_pad(
+                    explode(',', $parameter),
+                    3,
+                    null
+                );
 
-                $exists = Database::table($table)
-                    ->where($column, $value)
-                    ->first();
+                $query = Database::table($table)
+                    ->where($column, $value);
 
-                if ($exists) {
+                if ($ignoreId !== null) {
+                    $query->where('id', '!=', $ignoreId);
+                }
+
+                if ($query->first()) {
                     $this->errors[$field][] =
                         __("{$field} already exists.");
                 }
