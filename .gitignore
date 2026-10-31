@@ -11,3 +11,5 @@
 !/modules/roles
 !/modules/users
 !/modules/dashboard.php
+
+/cache/*

@@ -10,7 +10,7 @@ use Libraries\Route;
  * example 1
  * Route::get('/', 'modules/index')
  * 
- * example 2
+ * example 2 : not cacheable
  * Route::get('/', function(\Libraries\Request $request){ return 'Hello World';})
  * 
  * example 3
@@ -20,9 +20,7 @@ use Libraries\Route;
  * Route::get('/', isAuthenticated(), 'modules/index')
  */
 
-Route::get('/', function(){
-    return ['message' => "It's Work"];
-});
+Route::get('/', 'modules/index');
 
 Route::post('/login', validate('modules/auth/validation/login'), 'modules/auth/actions/login');
 Route::post('/register', validate('modules/auth/validation/register'), 'modules/auth/actions/register');

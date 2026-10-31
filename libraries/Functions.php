@@ -4,6 +4,8 @@ use Dotenv\Dotenv;
 use Libraries\Auth;
 use Libraries\Exceptions\UnauthorizedException;
 use Libraries\Request;
+use Libraries\Database as DB;
+use Libraries\Exceptions\ValidationException;
 
 if(file_exists('vendor/autoload.php'))
 {
@@ -61,16 +63,21 @@ function auth()
 
 function isAuthenticated()
 {
+    return [\Libraries\Middlewares\AuthMiddleware::class, 'handle'];
+}
+
+function periodActive()
+{
     return function(Request $request){
-        $user = auth()->user();
-        if(!$user)
+        $period = DB::table('periods')->select('*')->where('status', '=', 'ACTIVE')->first();
+        if(!$period)
         {
-            throw new UnauthorizedException([
-                'message' => 'Unauthorized'
+            throw new ValidationException([
+                'active_period' => 'No Active Period Found.'
             ]);
         }
 
-        $request->setUser($user);
+        $request->setOtherData('activePeriod', $period);
     };
 }
 
@@ -83,26 +90,12 @@ function can($permission)
 
 function permissionMiddleware($permission)
 {
-    return function(Request $request) use ($permission){
-        if(!auth()->can($permission))
-        {
-            throw new UnauthorizedException([
-                'message' => ' Unauthorized'
-            ]);
-        }
-
-        return true;
-    };
+    return [\Libraries\Middlewares\PermissionMiddleware::class, 'handle', $permission];
 }
 
-function validate($file){
-    return function (Request $request) use ($file) {
-        if(file_exists($file .'.php'))
-        {
-            $rules = require $file .'.php';
-            $request->validate($rules);
-        }
-    };
+function validate(string $file): array
+{
+    return [\Libraries\Middlewares\ValidateMiddleware::class, 'handle', $file];
 }
 
 function crudPermission($prefix)
@@ -113,9 +106,7 @@ function crudPermission($prefix)
 }
 
 function crudConfig(array $config){
-    return function (Request $request) use ($config) {
-        $request->setOtherData('crudConfig', $config);
-    };
+    return [\Libraries\Middlewares\CrudConfig::class, 'handle', $config];
 }
 
 
@@ -158,4 +149,56 @@ function getBearerToken() {
 function __($string)
 {
     return $string;
+}
+
+function parseCurrency(string $value)
+{
+    $value = str_replace('.', '', $value);
+    $value = str_replace(',', '.', $value);
+
+    return (float) $value;
+}
+
+function uploadFile(array $file, string $uploadDir): array
+{
+    if (!isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('Upload file gagal.');
+    }
+
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0755, true);
+    }
+
+    $originalName = $file['name'];
+    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+    // Nama file baru
+    $newFilename = bin2hex(random_bytes(16)) . '.' . $extension;
+
+    $destination = rtrim($uploadDir, DIRECTORY_SEPARATOR)
+        . DIRECTORY_SEPARATOR
+        . $newFilename;
+
+    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+        throw new RuntimeException('Gagal memindahkan file upload.');
+    }
+
+    return [
+        'original_name' => $originalName,
+        'filename'      => $newFilename,
+        'path'          => $destination,
+        'mime_type'     => $file['type'],
+        'size'          => $file['size'],
+    ];
+}
+
+function getUploadedFile(array $files, string $key): array
+{
+    return [
+        'name' => $files['name'][$key],
+        'type' => $files['type'][$key],
+        'tmp_name' => $files['tmp_name'][$key],
+        'error' => $files['error'][$key],
+        'size' => $files['size'][$key],
+    ];
 }

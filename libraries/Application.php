@@ -21,7 +21,22 @@ class Application
     public function run()
     {
         require 'libraries/Functions.php';
-        require 'config/routes.php';
+
+        $cache = new RouteCache('cache/routes.php');
+        if ($cache->exists()) {
+
+            $routes = $cache->load();
+
+            if ($routes !== null) {
+                Route::importCache($routes);
+            } else {
+                // Fallback jika cache rusak
+                require 'config/routes.php';
+            }
+
+        } else {
+            require 'config/routes.php';
+        }
 
         $this->routes = Route::all();
         try {
@@ -67,48 +82,42 @@ class Application
 
     }
 
-    protected function match(string $pattern, string $uri): array|false
+    protected function match(array $compiled, string $uri): array|false
     {
-        preg_match_all('/\{(\w+)\}/', $pattern, $names);
-
-        $regex = preg_replace(
-            '/\{\w+\}/',
-            '([^/]+)',
-            $pattern
-        );
-
-        $regex = '#^' . $regex . '$#';
-
-        if (!preg_match($regex, $uri, $matches)) {
+        if (!preg_match($compiled['regex'], $uri, $matches)) {
             return false;
         }
 
         array_shift($matches);
 
-        return array_combine(
-            $names[1],
-            $matches
-        );
+        return $compiled['params']
+            ? array_combine($compiled['params'], $matches)
+            : [];
     }
 
     public function dispatch()
     {
         $request = request();
 
-        foreach ($this->routes as $route) {
+        if (isset($_POST['_method'])) {
+            $request->setMethod(
+                strtoupper($_POST['_method'])
+            );
+        }
 
-            if(isset($_POST['_method']))
-            {
-                $request->setMethod($_POST['_method']);
-            }
+        $method = $request->method();
+        $path   = $request->path();
+        $routes = $this->routes[$method] ?? [];
 
-            if ($route['method'] !== $request->method()) {
+        foreach ($routes as $route) {   
+
+            if ($route['method'] !== $method) {
                 continue;
             }
 
             $params = $this->match(
-                $route['uri'],
-                $request->path()
+                $route['compiled'],
+                $path
             );
 
             if ($params === false) {
@@ -128,7 +137,7 @@ class Application
             $request->setRouteParams($params);
 
             foreach ($handlers as $middleware) {
-                $middleware($request);
+                $this->runMiddleware($middleware, $request);
             }
 
             return $this->runAction($action, $request);
@@ -136,6 +145,39 @@ class Application
 
         throw new NotFoundException(['message' => __('Not Found')]);
         
+    }
+
+    protected function runMiddleware($middleware, Request $request): void
+    {
+        // Closure middleware
+        if ($middleware instanceof Closure) {
+            $middleware($request);
+            return;
+        }
+
+        // Callable array middleware:
+        // [Class, method, ...arguments]
+        if (
+            is_array($middleware) &&
+            count($middleware) >= 2 &&
+            is_string($middleware[0]) &&
+            is_string($middleware[1])
+        ) {
+            [$class, $method] = array_slice($middleware, 0, 2);
+
+            $arguments = array_slice($middleware, 2);
+
+            if (!is_callable([$class, $method])) {
+                throw new RuntimeException(
+                    "Invalid middleware: {$class}::{$method}"
+                );
+            }
+
+            $class::$method($request, ...$arguments);
+            return;
+        }
+
+        throw new RuntimeException(__('Invalid middleware.'));
     }
 
     protected function runAction($action, Request $request)
