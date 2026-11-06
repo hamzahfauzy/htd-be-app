@@ -23,7 +23,7 @@ class Database
     protected $updateData = [];
 
     // --- AUTO CONNECT ---
-    protected static function getConnection()
+    public static function getConnection()
     {
         if (!self::$pdo) {
             $dbconfig = config('database');

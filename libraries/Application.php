@@ -7,6 +7,8 @@ use Libraries\Exceptions\NotFoundException;
 use Libraries\Exceptions\UnauthorizedException;
 use Libraries\Exceptions\ValidationException;
 use RuntimeException;
+use Libraries\Logging\Logger;
+use Libraries\Logging\RequestLogger;
 
 class Application 
 {
@@ -22,60 +24,107 @@ class Application
     {
         require 'libraries/Functions.php';
 
-        $cache = new RouteCache('cache/routes.php');
-        if ($cache->exists()) {
+        $config = require 'config/logger.php';
 
-            $routes = $cache->load();
+        // Inisialisasi driver
+        $connection = $config['driver'] === 'database' ? Database::getConnection() : null;
 
-            if ($routes !== null) {
-                Route::importCache($routes);
+        $logger = new Logger($config, $connection);
+
+        $requestLogger = new RequestLogger($logger);
+
+        ob_start();
+
+        try {
+            
+            $cache = new RouteCache('cache/routes.php');
+
+            if ($cache->exists()) {
+
+                $routes = $cache->load();
+
+                if ($routes !== null) {
+                    Route::importCache($routes);
+                } else {
+                    // Fallback jika cache rusak
+                    require 'config/routes.php';
+                }
+
             } else {
-                // Fallback jika cache rusak
                 require 'config/routes.php';
             }
 
-        } else {
-            require 'config/routes.php';
-        }
+            $this->routes = Route::all();
+            try {
 
-        $this->routes = Route::all();
-        try {
+                $response = $this->dispatch();
 
-            $response = $this->dispatch();
+                if($response instanceof JsonData)
+                {
+                    $response->send();
+                }
+                else
+                {
+                    Response::send($response);
+                }
 
-            if($response instanceof JsonData)
-            {
-                $response->send();
+            } catch (ValidationException $e) {
+
+                Response::json(
+                    __('Validation Error'),
+                    $e->errors(),
+                    400
+                )->send();
+
+            } catch (UnauthorizedException $e) {
+
+                Response::json(__('Unauthorized'), [], 401)->send();
+
+            } catch (NotFoundException $e) {
+
+                Response::json(__('Not Found'), [], 404)->send();
+
+            } catch (\Throwable $e) {
+
+                Response::json(
+                    $e->getMessage(),
+                    [],
+                    500
+                )->send();
+
             }
-            else
-            {
-                Response::send($response);
+
+            $responseBody = ob_get_clean();
+
+            $statusCode = http_response_code() ?: 200;
+
+            // Konversi JSON response menjadi array jika memungkinkan
+            $responsePayload = json_decode($responseBody, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $responsePayload = $responseBody;
             }
 
-        } catch (ValidationException $e) {
+            // Catat response
+            $requestLogger->logResponse(
+                $statusCode,
+                $responsePayload
+            );
 
-            Response::json(
-                __('Validation Error'),
-                $e->errors(),
-                400
-            )->send();
+            echo $responseBody;
 
-        } catch (UnauthorizedException $e) {
+        } catch (\Throwable $th) {
+            //throw $th;
+            ob_end_clean();
 
-            Response::json(__('Unauthorized'), [], 401)->send();
+            $requestLogger->logResponse(
+                500,
+                [
+                    'error' => 'Internal Server Error',
+                ]
+            );
 
-        } catch (NotFoundException $e) {
-
-            Response::json(__('Not Found'), [], 404)->send();
-
-        } catch (\Throwable $e) {
-
-            Response::json(
-                $e->getMessage(),
-                [],
-                500
-            )->send();
-
+            throw $e;
         }
 
         return;
